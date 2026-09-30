@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -575,6 +576,7 @@ class EpisodeActionRail extends StatelessWidget {
           key: Key('favorite-${episode.id}'),
           iconAsset: 'lib/icons/favorite_star.svg',
           iconKey: Key('favorite-icon-${episode.id}'),
+          iconShadowKey: Key('favorite-icon-shadow-${episode.id}'),
           label: _formatCount(favoriteCount),
           selected: isFavorited,
           compact: compact,
@@ -585,6 +587,7 @@ class EpisodeActionRail extends StatelessWidget {
           key: Key('comment-${episode.id}'),
           iconAsset: 'lib/icons/comment_bubble.svg',
           iconKey: Key('comment-icon-${episode.id}'),
+          iconShadowKey: Key('comment-icon-shadow-${episode.id}'),
           label: episode.stats.commentCount.toString(),
           compact: compact,
           onTap: onComment,
@@ -594,6 +597,7 @@ class EpisodeActionRail extends StatelessWidget {
           key: Key('like-${episode.id}'),
           iconAsset: 'lib/icons/heart_like.svg',
           iconKey: Key('like-icon-${episode.id}'),
+          iconShadowKey: Key('like-icon-shadow-${episode.id}'),
           label: _formatCount(likeCount),
           selected: isLiked,
           compact: compact,
@@ -605,6 +609,7 @@ class EpisodeActionRail extends StatelessWidget {
           key: Key('share-${episode.id}'),
           iconAsset: 'lib/icons/share_arrow.svg',
           iconKey: Key('share-icon-${episode.id}'),
+          iconShadowKey: Key('share-icon-shadow-${episode.id}'),
           label: '分享',
           compact: compact,
           inactiveLabelColor: const Color(0xFFBDBDBD),
@@ -620,6 +625,7 @@ class _RailAction extends StatelessWidget {
     super.key,
     required this.iconAsset,
     required this.iconKey,
+    required this.iconShadowKey,
     required this.label,
     required this.onTap,
     required this.compact,
@@ -629,6 +635,7 @@ class _RailAction extends StatelessWidget {
 
   final String iconAsset;
   final Key iconKey;
+  final Key iconShadowKey;
   final String label;
   final VoidCallback onTap;
   final bool compact;
@@ -638,6 +645,10 @@ class _RailAction extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activeColor = selected ? const Color(0xFFFF7A00) : Colors.white;
+    final iconSize = compact ? 34.0 : 40.0;
+    const railTextShadows = [
+      Shadow(color: Color(0x99000000), offset: Offset(0, 1), blurRadius: 4),
+    ];
 
     return Semantics(
       button: true,
@@ -651,14 +662,12 @@ class _RailAction extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              SvgPicture.asset(
-                iconAsset,
-                key: iconKey,
-                width: compact ? 34 : 40,
-                height: compact ? 34 : 40,
-                fit: BoxFit.contain,
-                excludeFromSemantics: true,
-                colorFilter: ColorFilter.mode(activeColor, BlendMode.srcIn),
+              _ShadowedRailSvgIcon(
+                asset: iconAsset,
+                size: iconSize,
+                color: activeColor,
+                iconKey: iconKey,
+                shadowKey: iconShadowKey,
               ),
               SizedBox(height: compact ? 3 : 4),
               _AppText(
@@ -668,10 +677,68 @@ class _RailAction extends StatelessWidget {
                 color: selected ? activeColor : inactiveLabelColor,
                 lineHeight: 1,
                 fontFamily: 'Inter',
+                shadows: railTextShadows,
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ShadowedRailSvgIcon extends StatelessWidget {
+  const _ShadowedRailSvgIcon({
+    required this.asset,
+    required this.size,
+    required this.color,
+    required this.iconKey,
+    required this.shadowKey,
+  });
+
+  final String asset;
+  final double size;
+  final Color color;
+  final Key iconKey;
+  final Key shadowKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 0,
+            top: 1,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 2, sigmaY: 2),
+              child: SvgPicture.asset(
+                asset,
+                key: shadowKey,
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+                colorFilter: const ColorFilter.mode(
+                  Color(0x99000000),
+                  BlendMode.srcIn,
+                ),
+              ),
+            ),
+          ),
+          SvgPicture.asset(
+            asset,
+            key: iconKey,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            excludeFromSemantics: true,
+            colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+          ),
+        ],
       ),
     );
   }
@@ -872,19 +939,11 @@ class _SeriesPill extends StatelessWidget {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
+                  Icon(
+                    Icons.subscriptions,
                     key: Key('series-pill-icon-${episode.id}'),
-                    width: 16,
-                    height: 15,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                    child: const Icon(
-                      Icons.play_arrow_rounded,
-                      size: 13,
-                      color: Color(0xFF111111),
-                    ),
+                    size: 16,
+                    color: Colors.white,
                   ),
                   const SizedBox(width: 6),
                   SizedBox(
@@ -1096,6 +1155,7 @@ class _AppText extends StatelessWidget {
     this.lineHeight,
     this.fontFamily = 'Noto Sans SC',
     this.overflow = TextOverflow.clip,
+    this.shadows,
   });
 
   final String text;
@@ -1105,6 +1165,7 @@ class _AppText extends StatelessWidget {
   final double? lineHeight;
   final String fontFamily;
   final TextOverflow overflow;
+  final List<Shadow>? shadows;
 
   @override
   Widget build(BuildContext context) {
@@ -1119,6 +1180,7 @@ class _AppText extends StatelessWidget {
         height: lineHeight,
         letterSpacing: 0,
         fontFamily: fontFamily,
+        shadows: shadows,
       ),
     );
   }

@@ -71,6 +71,15 @@ void main() {
       return tester.widget<SvgPicture>(find.byKey(Key(key)));
     }
 
+    Text railLabel(String actionKey, String label) {
+      return tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(Key(actionKey)),
+          matching: find.text(label),
+        ),
+      );
+    }
+
     expect(
       railIcon('favorite-icon-episode-001').bytesLoader.toString(),
       'SvgAssetLoader(lib/icons/favorite_star.svg)',
@@ -87,6 +96,36 @@ void main() {
       railIcon('share-icon-episode-001').bytesLoader.toString(),
       'SvgAssetLoader(lib/icons/share_arrow.svg)',
     );
+    expect(
+      railIcon('favorite-icon-shadow-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/favorite_star.svg)',
+    );
+    expect(
+      railIcon('comment-icon-shadow-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/comment_bubble.svg)',
+    );
+    expect(
+      railIcon('like-icon-shadow-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/heart_like.svg)',
+    );
+    expect(
+      railIcon('share-icon-shadow-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/share_arrow.svg)',
+    );
+
+    for (final label in [
+      ('favorite-episode-001', '185.8万'),
+      ('comment-episode-001', '1141'),
+      ('like-episode-001', '9.2万'),
+      ('share-episode-001', '分享'),
+    ]) {
+      final shadows = railLabel(label.$1, label.$2).style?.shadows;
+      expect(shadows, isNotNull);
+      expect(shadows, isNotEmpty);
+      expect(shadows!.first.color, const Color(0x99000000));
+      expect(shadows.first.offset, const Offset(0, 1));
+      expect(shadows.first.blurRadius, 4);
+    }
 
     final container = ProviderScope.containerOf(
       tester.element(find.byType(HgApp)),
@@ -298,16 +337,16 @@ void main() {
     final seriesPill = tester.widget<DecoratedBox>(
       find.byKey(const Key('series-pill-episode-001')),
     );
-    final iconBackground = tester.widget<Container>(
+    final seriesPillIcon = tester.widget<Icon>(
       find.byKey(const Key('series-pill-icon-episode-001')),
     );
     final decoration = seriesPill.decoration as BoxDecoration;
-    final iconDecoration = iconBackground.decoration! as BoxDecoration;
 
     expect(seriesPillRect.width, lessThan(infoRect.width));
     expect(seriesPillRect.width, lessThanOrEqualTo(infoRect.width));
     expect(decoration.border, isNull);
-    expect(iconDecoration.color, Colors.white);
+    expect(seriesPillIcon.icon, Icons.subscriptions);
+    expect(seriesPillIcon.color, Colors.white);
     expect(find.byKey(const Key('track-drama-tag-god')), findsNothing);
     expect(find.textContaining('已追剧'), findsNothing);
 
@@ -328,13 +367,9 @@ void main() {
     );
     expect(
       (tester
-                  .widget<Container>(
-                    find.byKey(const Key('series-pill-icon-episode-001')),
-                  )
-                  .decoration!
-              as BoxDecoration)
-          .color,
-      Colors.white,
+          .widget<Icon>(find.byKey(const Key('series-pill-icon-episode-001')))
+          .icon),
+      Icons.subscriptions,
     );
   });
 
