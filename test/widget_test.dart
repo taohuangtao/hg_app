@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hg_app/core/app/hg_app.dart';
 import 'package:hg_app/features/player/application/player_controller.dart';
@@ -50,6 +51,15 @@ void main() {
     expect(find.text('系统'), findsOneWidget);
     expect(find.text('观看完整漫剧 · 全316集'), findsOneWidget);
     expect(find.byKey(const Key('fullscreen-episode-001')), findsOneWidget);
+    expect(
+      tester
+          .widget<SvgPicture>(
+            find.byKey(const Key('fullscreen-orientation-icon')),
+          )
+          .bytesLoader
+          .toString(),
+      'SvgAssetLoader(lib/icons/orientation_switch.svg)',
+    );
     expect(find.byKey(const Key('like-episode-001')), findsOneWidget);
     expect(find.byKey(const Key('favorite-episode-001')), findsOneWidget);
   });
@@ -57,33 +67,52 @@ void main() {
   testWidgets('updates like and favorite states immediately', (tester) async {
     await pumpHgApp(tester);
 
-    Icon likeIcon() {
-      return tester.widget<Icon>(
-        find.descendant(
-          of: find.byKey(const Key('like-episode-001')),
-          matching: find.byIcon(Icons.favorite_rounded),
-        ),
-      );
+    SvgPicture railIcon(String key) {
+      return tester.widget<SvgPicture>(find.byKey(Key(key)));
     }
 
-    Icon favoriteIcon() {
-      return tester.widget<Icon>(
-        find.descendant(
-          of: find.byKey(const Key('favorite-episode-001')),
-          matching: find.byIcon(Icons.star_rounded),
-        ),
-      );
-    }
+    expect(
+      railIcon('favorite-icon-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/favorite_star.svg)',
+    );
+    expect(
+      railIcon('comment-icon-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/comment_bubble.svg)',
+    );
+    expect(
+      railIcon('like-icon-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/heart_like.svg)',
+    );
+    expect(
+      railIcon('share-icon-episode-001').bytesLoader.toString(),
+      'SvgAssetLoader(lib/icons/share_arrow.svg)',
+    );
 
-    expect(likeIcon().color, Colors.white);
-    expect(favoriteIcon().color, Colors.white);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HgApp)),
+      listen: false,
+    );
+    expect(
+      container.read(playerControllerProvider).isLiked('episode-001'),
+      false,
+    );
+    expect(
+      container.read(playerControllerProvider).isFavorited('episode-001'),
+      false,
+    );
 
     await tester.tap(find.byKey(const Key('like-episode-001')));
     await tester.tap(find.byKey(const Key('favorite-episode-001')));
     await tester.pump();
 
-    expect(likeIcon().color, const Color(0xFFFF7A00));
-    expect(favoriteIcon().color, const Color(0xFFFF7A00));
+    expect(
+      container.read(playerControllerProvider).isLiked('episode-001'),
+      true,
+    );
+    expect(
+      container.read(playerControllerProvider).isFavorited('episode-001'),
+      true,
+    );
   });
 
   testWidgets('switches drama card on vertical swipe', (tester) async {
@@ -132,6 +161,10 @@ void main() {
         const Key('fullscreen-episode-001'),
       );
       final infoRect = widgetRect(tester, const Key('info-panel-episode-001'));
+      final seriesPillRect = widgetRect(
+        tester,
+        const Key('series-pill-episode-001'),
+      );
       final leftStackRect = widgetRect(
         tester,
         const Key('left-info-stack-episode-001'),
@@ -167,6 +200,8 @@ void main() {
         fullscreenRect.top - mediaRect.bottom,
         inInclusiveRange(6.0, 16.0),
       );
+      expect(seriesPillRect.width, lessThan(infoRect.width));
+      expect(seriesPillRect.width, lessThanOrEqualTo(infoRect.width));
       expect(infoRect.top - barrageRect.bottom, closeTo(barrageInfoGap, 1));
       expect(leftStackRect.bottom, closeTo(infoRect.bottom, 1));
       expect(infoRect.bottom, closeTo(completeRect.top - bottomContentGap, 1));
@@ -207,6 +242,59 @@ void main() {
       expect(tester.getTopLeft(find.text('推荐')), recommendedPosition);
       expect(tester.getTopLeft(find.text('首页')), homePosition);
     }
+  });
+
+  testWidgets('renders series pill as static intrinsic-width text', (
+    tester,
+  ) async {
+    await pumpHgApp(tester);
+
+    final infoRect = widgetRect(tester, const Key('info-panel-episode-001'));
+    final seriesPillRect = widgetRect(
+      tester,
+      const Key('series-pill-episode-001'),
+    );
+    final seriesPill = tester.widget<DecoratedBox>(
+      find.byKey(const Key('series-pill-episode-001')),
+    );
+    final iconBackground = tester.widget<Container>(
+      find.byKey(const Key('series-pill-icon-episode-001')),
+    );
+    final decoration = seriesPill.decoration as BoxDecoration;
+    final iconDecoration = iconBackground.decoration! as BoxDecoration;
+
+    expect(seriesPillRect.width, lessThan(infoRect.width));
+    expect(seriesPillRect.width, lessThanOrEqualTo(infoRect.width));
+    expect(decoration.border, isNull);
+    expect(iconDecoration.color, Colors.white);
+    expect(find.byKey(const Key('track-drama-tag-god')), findsNothing);
+    expect(find.textContaining('已追剧'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('series-pill-episode-001')));
+    await tester.pump();
+
+    expect(find.text('系列剧 · 标签造神 | 共236万人在追'), findsOneWidget);
+    expect(find.textContaining('已追剧'), findsNothing);
+    expect(
+      (tester
+                  .widget<DecoratedBox>(
+                    find.byKey(const Key('series-pill-episode-001')),
+                  )
+                  .decoration
+              as BoxDecoration)
+          .border,
+      isNull,
+    );
+    expect(
+      (tester
+                  .widget<Container>(
+                    find.byKey(const Key('series-pill-icon-episode-001')),
+                  )
+                  .decoration!
+              as BoxDecoration)
+          .color,
+      Colors.white,
+    );
   });
 
   testWidgets('keeps page-owned bottom content aligned after page switch', (

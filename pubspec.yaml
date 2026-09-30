@@ -42,6 +42,7 @@ dependencies:
   hive_flutter: ^1.1.0
   flutter_secure_storage: ^11.2.0
   cached_network_image: ^4.0.3
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +68,7 @@ flutter:
 
   assets:
     - _video/
+    - lib/icons/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

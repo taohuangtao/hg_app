@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../application/player_controller.dart';
 import '../data/player_feed_repository.dart';
@@ -152,7 +153,6 @@ class EpisodePage extends ConsumerWidget {
     final videoEnabled = ref.watch(videoPlaybackEnabledProvider);
     final isLiked = controllerState.isLiked(episode.id);
     final isFavorited = controllerState.isFavorited(episode.id);
-    final isTracked = controllerState.isTracked(episode.dramaId);
     final shouldPlay = isActive && controllerState.isPlaying;
     final layout = _EpisodeLayout(metrics, episode.videoResolution);
 
@@ -214,10 +214,8 @@ class EpisodePage extends ConsumerWidget {
                 episode: episode,
                 compact: metrics.isCompactHeight,
                 veryCompact: metrics.isVeryCompactHeight,
-                isTracked: isTracked,
                 gap: layout.barrageInfoGap,
                 onBarrage: () => _showMessage(context, '弹幕开关已切换'),
-                onTrack: () => notifier.toggleTrackDrama(episode.dramaId),
               ),
             ),
             Positioned(
@@ -571,7 +569,8 @@ class EpisodeActionRail extends StatelessWidget {
       children: [
         _RailAction(
           key: Key('favorite-${episode.id}'),
-          icon: Icons.star_rounded,
+          iconAsset: 'lib/icons/favorite_star.svg',
+          iconKey: Key('favorite-icon-${episode.id}'),
           label: _formatCount(favoriteCount),
           selected: isFavorited,
           compact: compact,
@@ -580,7 +579,8 @@ class EpisodeActionRail extends StatelessWidget {
         SizedBox(height: gap),
         _RailAction(
           key: Key('comment-${episode.id}'),
-          icon: Icons.chat_bubble_rounded,
+          iconAsset: 'lib/icons/comment_bubble.svg',
+          iconKey: Key('comment-icon-${episode.id}'),
           label: episode.stats.commentCount.toString(),
           compact: compact,
           onTap: onComment,
@@ -588,7 +588,8 @@ class EpisodeActionRail extends StatelessWidget {
         SizedBox(height: gap),
         _RailAction(
           key: Key('like-${episode.id}'),
-          icon: Icons.favorite_rounded,
+          iconAsset: 'lib/icons/heart_like.svg',
+          iconKey: Key('like-icon-${episode.id}'),
           label: _formatCount(likeCount),
           selected: isLiked,
           compact: compact,
@@ -598,7 +599,8 @@ class EpisodeActionRail extends StatelessWidget {
         SizedBox(height: gap),
         _RailAction(
           key: Key('share-${episode.id}'),
-          icon: Icons.near_me_rounded,
+          iconAsset: 'lib/icons/share_arrow.svg',
+          iconKey: Key('share-icon-${episode.id}'),
           label: '分享',
           compact: compact,
           inactiveLabelColor: const Color(0xFFBDBDBD),
@@ -612,7 +614,8 @@ class EpisodeActionRail extends StatelessWidget {
 class _RailAction extends StatelessWidget {
   const _RailAction({
     super.key,
-    required this.icon,
+    required this.iconAsset,
+    required this.iconKey,
     required this.label,
     required this.onTap,
     required this.compact,
@@ -620,7 +623,8 @@ class _RailAction extends StatelessWidget {
     this.inactiveLabelColor = Colors.white,
   });
 
-  final IconData icon;
+  final String iconAsset;
+  final Key iconKey;
   final String label;
   final VoidCallback onTap;
   final bool compact;
@@ -643,7 +647,15 @@ class _RailAction extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.start,
             children: [
-              Icon(icon, color: activeColor, size: compact ? 34 : 40),
+              SvgPicture.asset(
+                iconAsset,
+                key: iconKey,
+                width: compact ? 34 : 40,
+                height: compact ? 34 : 40,
+                fit: BoxFit.contain,
+                excludeFromSemantics: true,
+                colorFilter: ColorFilter.mode(activeColor, BlendMode.srcIn),
+              ),
               SizedBox(height: compact ? 3 : 4),
               _AppText(
                 label,
@@ -690,19 +702,15 @@ class EpisodeLeftInfoStack extends StatelessWidget {
     required this.episode,
     required this.compact,
     required this.veryCompact,
-    required this.isTracked,
     required this.gap,
     required this.onBarrage,
-    required this.onTrack,
   });
 
   final DramaEpisode episode;
   final bool compact;
   final bool veryCompact;
-  final bool isTracked;
   final double gap;
   final VoidCallback onBarrage;
-  final VoidCallback onTrack;
 
   @override
   Widget build(BuildContext context) {
@@ -723,8 +731,6 @@ class EpisodeLeftInfoStack extends StatelessWidget {
             compact: compact,
             gap: gap,
             veryCompact: veryCompact,
-            isTracked: isTracked,
-            onTrack: onTrack,
           ),
         ),
       ],
@@ -748,12 +754,23 @@ class _FullscreenButton extends StatelessWidget {
           color: const Color(0xFF1D1D1D),
           borderRadius: BorderRadius.circular(13),
         ),
-        child: const Row(
+        child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.fullscreen, color: Colors.white, size: 16),
-            SizedBox(width: 8),
-            _AppText('全屏观看', size: 12, weight: FontWeight.w700),
+            SvgPicture.asset(
+              'lib/icons/orientation_switch.svg',
+              key: const Key('fullscreen-orientation-icon'),
+              width: 16,
+              height: 16,
+              fit: BoxFit.contain,
+              excludeFromSemantics: true,
+              colorFilter: const ColorFilter.mode(
+                Colors.white,
+                BlendMode.srcIn,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const _AppText('全屏观看', size: 12, weight: FontWeight.w700),
           ],
         ),
       ),
@@ -768,16 +785,12 @@ class EpisodeInfoPanel extends StatelessWidget {
     required this.compact,
     required this.veryCompact,
     required this.gap,
-    required this.isTracked,
-    required this.onTrack,
   });
 
   final DramaEpisode episode;
   final bool compact;
   final bool veryCompact;
-  final bool isTracked;
   final double gap;
-  final VoidCallback onTrack;
 
   @override
   Widget build(BuildContext context) {
@@ -785,7 +798,7 @@ class EpisodeInfoPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _SeriesPill(episode: episode, isTracked: isTracked, onTap: onTrack),
+        _SeriesPill(episode: episode),
         SizedBox(height: gap),
         _AppText(
           '${episode.title} ›',
@@ -799,10 +812,7 @@ class EpisodeInfoPanel extends StatelessWidget {
         if (!veryCompact) ...[
           SizedBox(height: gap),
           _HotComment(commentPreview: episode.commentPreview),
-          if (!compact) ...[
-            SizedBox(height: gap),
-            const _AuthorDisclosure(),
-          ],
+          if (!compact) ...[SizedBox(height: gap), const _AuthorDisclosure()],
         ],
       ],
     );
@@ -810,62 +820,84 @@ class EpisodeInfoPanel extends StatelessWidget {
 }
 
 class _SeriesPill extends StatelessWidget {
-  const _SeriesPill({
-    required this.episode,
-    required this.isTracked,
-    required this.onTap,
-  });
+  const _SeriesPill({required this.episode});
 
   final DramaEpisode episode;
-  final bool isTracked;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      key: Key('track-${episode.dramaId}'),
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 31),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: const Color(0xFF181818),
-          borderRadius: BorderRadius.circular(6),
-          border: isTracked
-              ? Border.all(color: const Color(0xFFFF7A00), width: 1)
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 16,
-              height: 15,
-              decoration: BoxDecoration(
-                color: isTracked ? const Color(0xFFFF7A00) : Colors.white,
-                borderRadius: BorderRadius.circular(3),
-              ),
-              child: const Icon(
-                Icons.play_arrow_rounded,
-                size: 13,
-                color: Color(0xFF111111),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.hasBoundedWidth
+            ? constraints.maxWidth
+            : 280.0;
+        final maxWidth = math.max(0.0, availableWidth - 12);
+        const horizontalPadding = 24.0;
+        const iconWidth = 16.0;
+        const iconGap = 6.0;
+        final textStyle = const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0,
+          fontFamily: 'Noto Sans SC',
+        );
+        final textPainter = TextPainter(
+          text: TextSpan(text: episode.followerText, style: textStyle),
+          maxLines: 1,
+          textDirection: Directionality.of(context),
+        )..layout();
+        final desiredWidth =
+            horizontalPadding + iconWidth + iconGap + textPainter.width;
+        final pillWidth = math.min(desiredWidth, maxWidth);
+        final maxTextWidth = math.max(
+          0.0,
+          pillWidth - horizontalPadding - iconWidth - iconGap,
+        );
+
+        return SizedBox(
+          width: pillWidth,
+          child: DecoratedBox(
+            key: Key('series-pill-${episode.id}'),
+            decoration: BoxDecoration(
+              color: const Color(0xFF181818),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    key: Key('series-pill-icon-${episode.id}'),
+                    width: 16,
+                    height: 15,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      size: 13,
+                      color: Color(0xFF111111),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  SizedBox(
+                    width: maxTextWidth,
+                    child: _AppText(
+                      episode.followerText,
+                      size: 12,
+                      weight: FontWeight.w700,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: _AppText(
-                isTracked
-                    ? '已追剧 · ${episode.followerText}'
-                    : episode.followerText,
-                size: 12,
-                weight: FontWeight.w700,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -1046,31 +1078,6 @@ class CompleteDramaEntry extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ShadowedCaption extends StatelessWidget {
-  const _ShadowedCaption({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned(
-          left: 1,
-          top: 2,
-          child: _AppText(
-            text,
-            size: 16,
-            weight: FontWeight.w800,
-            color: Colors.black,
-          ),
-        ),
-        _AppText(text, size: 16, weight: FontWeight.w800),
-      ],
     );
   }
 }
