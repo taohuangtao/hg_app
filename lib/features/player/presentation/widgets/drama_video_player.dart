@@ -1,6 +1,8 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../domain/drama_episode.dart';
@@ -13,6 +15,7 @@ class DramaVideoPlayer extends StatefulWidget {
     required this.isPlaying,
     required this.enableController,
     required this.onTogglePlay,
+    this.tapLayerKey,
   });
 
   final String assetPath;
@@ -20,6 +23,7 @@ class DramaVideoPlayer extends StatefulWidget {
   final bool isPlaying;
   final bool enableController;
   final VoidCallback onTogglePlay;
+  final Key? tapLayerKey;
 
   @override
   State<DramaVideoPlayer> createState() => _DramaVideoPlayerState();
@@ -108,30 +112,27 @@ class _DramaVideoPlayerState extends State<DramaVideoPlayer> {
     final controller = _controller;
     final initialized = controller?.value.isInitialized ?? false;
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _error == null ? widget.onTogglePlay : _retry,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (!widget.enableController || controller == null || !initialized)
-            MockDramaArtwork(error: _error != null)
-          else
-            _VideoSurface(
-              controller: controller,
-              resolution: widget.resolution,
-            ),
-          if (_error != null)
-            const _PlayerOverlay(
-              icon: Icons.refresh_rounded,
-              label: '播放失败，轻触重试',
-            )
-          else if (widget.enableController && !initialized)
-            const _LoadingOverlay()
-          else if (!widget.enableController || !widget.isPlaying)
-            const _PlayerOverlay(icon: Icons.play_arrow_rounded),
-        ],
-      ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (!widget.enableController || controller == null || !initialized)
+          MockDramaArtwork(error: _error != null)
+        else
+          _VideoSurface(controller: controller, resolution: widget.resolution),
+        if (_error != null)
+          const _PlayerOverlay(icon: Icons.refresh_rounded, label: '播放失败，轻触重试')
+        else if (widget.enableController && !initialized)
+          const _LoadingOverlay()
+        else if (!widget.enableController || !widget.isPlaying)
+          const _PlayerOverlay(icon: Icons.play_arrow_rounded),
+        Positioned.fill(
+          child: _VideoTapLayer(
+            layerKey: widget.tapLayerKey,
+            intercepting: kIsWeb && widget.enableController,
+            onTap: _error == null ? widget.onTogglePlay : _retry,
+          ),
+        ),
+      ],
     );
   }
 
@@ -140,6 +141,31 @@ class _DramaVideoPlayerState extends State<DramaVideoPlayer> {
     if (widget.enableController) {
       setState(_createController);
     }
+  }
+}
+
+class _VideoTapLayer extends StatelessWidget {
+  const _VideoTapLayer({
+    required this.layerKey,
+    required this.intercepting,
+    required this.onTap,
+  });
+
+  final Key? layerKey;
+  final bool intercepting;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PointerInterceptor(
+      intercepting: intercepting,
+      child: GestureDetector(
+        key: layerKey,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: const SizedBox.expand(),
+      ),
+    );
   }
 }
 

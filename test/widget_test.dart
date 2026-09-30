@@ -115,6 +115,47 @@ void main() {
     );
   });
 
+  testWidgets('toggles playback only when tapping the video layer', (
+    tester,
+  ) async {
+    await pumpHgApp(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HgApp)),
+      listen: false,
+    );
+
+    expect(container.read(playerControllerProvider).isPlaying, true);
+
+    await tester.tap(find.byKey(const Key('like-episode-001')));
+    await tester.pump();
+
+    expect(container.read(playerControllerProvider).isPlaying, true);
+    expect(
+      container.read(playerControllerProvider).isLiked('episode-001'),
+      true,
+    );
+
+    await tester.tap(find.byKey(const Key('video-tap-layer-episode-001')));
+    await tester.pump();
+
+    expect(container.read(playerControllerProvider).isPlaying, false);
+
+    await tester.tap(find.byKey(const Key('favorite-episode-001')));
+    await tester.pump();
+
+    expect(container.read(playerControllerProvider).isPlaying, false);
+    expect(
+      container.read(playerControllerProvider).isFavorited('episode-001'),
+      true,
+    );
+
+    await tester.tap(find.byKey(const Key('video-tap-layer-episode-001')));
+    await tester.pump();
+
+    expect(container.read(playerControllerProvider).isPlaying, true);
+  });
+
   testWidgets('switches drama card on vertical swipe', (tester) async {
     await pumpHgApp(tester);
 

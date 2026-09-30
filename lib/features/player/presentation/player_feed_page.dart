@@ -173,6 +173,7 @@ class EpisodePage extends ConsumerWidget {
                 isPlaying: shouldPlay,
                 enableController: videoEnabled && shouldPrepareVideo,
                 onTogglePlay: notifier.togglePlayPause,
+                tapLayerKey: Key('video-tap-layer-${episode.id}'),
               ),
             ),
             Positioned(
@@ -513,12 +514,14 @@ class EpisodeMediaPanel extends StatelessWidget {
     required this.isPlaying,
     required this.enableController,
     required this.onTogglePlay,
+    this.tapLayerKey,
   });
 
   final DramaEpisode episode;
   final bool isPlaying;
   final bool enableController;
   final VoidCallback onTogglePlay;
+  final Key? tapLayerKey;
 
   @override
   Widget build(BuildContext context) {
@@ -529,6 +532,7 @@ class EpisodeMediaPanel extends StatelessWidget {
         isPlaying: isPlaying,
         enableController: enableController,
         onTogglePlay: onTogglePlay,
+        tapLayerKey: tapLayerKey,
       ),
     );
   }
