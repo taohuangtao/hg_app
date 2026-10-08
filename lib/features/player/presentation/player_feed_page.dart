@@ -5,6 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../core/navigation/main_bottom_nav.dart';
+import '../../../core/navigation/main_tab.dart';
+import '../../../core/navigation/main_tab_index_provider.dart';
 import '../application/player_controller.dart';
 import '../data/player_feed_repository.dart';
 import '../domain/drama_episode.dart';
@@ -38,9 +41,18 @@ class _PlayerFeedPageState extends ConsumerState<PlayerFeedPage> {
     final state = ref.watch(playerControllerProvider);
     final mediaQuery = MediaQuery.of(context);
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: LayoutBuilder(
+    ref.listen<int>(mainTabIndexProvider, (previous, next) {
+      final notifier = ref.read(playerControllerProvider.notifier);
+      if (next == MainTab.home.index) {
+        notifier.resumePlayback();
+      } else {
+        notifier.suspendPlayback();
+      }
+    });
+
+    return ColoredBox(
+      color: Colors.black,
+      child: LayoutBuilder(
         builder: (context, constraints) {
           final metrics = PlayerLayoutMetrics.from(
             size: constraints.biggest,
@@ -79,13 +91,6 @@ class _PlayerFeedPageState extends ConsumerState<PlayerFeedPage> {
                 height: metrics.topChromeHeight,
                 child: PlayerChannelBar(metrics: metrics),
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: metrics.bottomChromeHeight,
-                child: PlayerBottomNav(metrics: metrics),
-              ),
             ],
           );
         },
@@ -106,7 +111,7 @@ class PlayerLayoutMetrics {
   }
 
   static const double channelBarHeight = 58;
-  static const double bottomNavHeight = 68;
+  static const double bottomNavHeight = MainBottomNav.height;
   static const double completeEntryHeight = 58;
 
   final Size size;
@@ -114,12 +119,9 @@ class PlayerLayoutMetrics {
 
   double get topChromeHeight => padding.top + channelBarHeight;
 
-  double get bottomChromeHeight => padding.bottom + bottomNavHeight;
-
   double get contentTop => topChromeHeight;
 
-  double get contentBottom =>
-      math.max(contentTop, size.height - bottomChromeHeight);
+  double get contentBottom => math.max(contentTop, size.height);
 
   double get contentHeight => math.max(0, contentBottom - contentTop);
 
@@ -154,7 +156,8 @@ class EpisodePage extends ConsumerWidget {
     final videoEnabled = ref.watch(videoPlaybackEnabledProvider);
     final isLiked = controllerState.isLiked(episode.id);
     final isFavorited = controllerState.isFavorited(episode.id);
-    final shouldPlay = isActive && controllerState.isPlaying;
+    final shouldPlay =
+        isActive && controllerState.isPlaying && !controllerState.playbackSuspended;
     final layout = _EpisodeLayout(metrics, episode.videoResolution);
 
     return MediaQuery.withNoTextScaling(
@@ -262,8 +265,7 @@ class _EpisodeLayout {
 
   double get mediaLeft => 0;
 
-  double get landscapeCenterY =>
-      (metrics.size.height - metrics.bottomChromeHeight) / 2;
+  double get landscapeCenterY => metrics.size.height / 2;
 
   double get mediaTop {
     if (resolution.isPortrait) {
@@ -293,9 +295,7 @@ class _EpisodeLayout {
   double get bottomContentGap => metrics.isCompactHeight ? 8 : 14;
 
   double get bottomInfoBottomInset =>
-      metrics.bottomChromeHeight +
-      PlayerLayoutMetrics.completeEntryHeight +
-      bottomContentGap;
+      PlayerLayoutMetrics.completeEntryHeight + bottomContentGap;
 
   double get bottomInfoBottom => metrics.size.height - bottomInfoBottomInset;
 
@@ -391,119 +391,6 @@ class _ChannelTab extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class PlayerBottomNav extends StatelessWidget {
-  const PlayerBottomNav({super.key, required this.metrics});
-
-  final PlayerLayoutMetrics metrics;
-
-  @override
-  Widget build(BuildContext context) {
-    return MediaQuery.withNoTextScaling(
-      child: Container(
-        color: const Color(0xFF222222),
-        padding: EdgeInsets.only(bottom: metrics.padding.bottom),
-        child: const SizedBox(
-          height: PlayerLayoutMetrics.bottomNavHeight,
-          child: Stack(
-            children: [
-              Row(
-                children: [
-                  _BottomNavItem(label: '首页', selected: true),
-                  _BottomNavItem(label: '剧场'),
-                  _BottomNavItem(label: '商城', muted: true),
-                  _BottomNavItem(label: '赚钱', muted: true),
-                  _BottomNavItem(label: '我的', muted: true),
-                ],
-              ),
-              Positioned(
-                left: 0,
-                right: 0,
-                top: 4,
-                child: Row(
-                  children: [
-                    Spacer(flex: 3),
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.topCenter,
-                        child: _EarnBadge(),
-                      ),
-                    ),
-                    Spacer(),
-                  ],
-                ),
-              ),
-              Positioned(
-                right: 21,
-                top: 12,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Color(0xFFFF6B00),
-                    shape: BoxShape.circle,
-                  ),
-                  child: SizedBox(width: 7, height: 7),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomNavItem extends StatelessWidget {
-  const _BottomNavItem({
-    required this.label,
-    this.selected = false,
-    this.muted = false,
-  });
-
-  final String label;
-  final bool selected;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = selected
-        ? Colors.white
-        : muted
-        ? const Color(0xFF747474)
-        : const Color(0xFF878787);
-
-    return Expanded(
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 11),
-          child: _AppText(
-            label,
-            size: 17,
-            weight: selected ? FontWeight.w800 : FontWeight.w700,
-            color: color,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EarnBadge extends StatelessWidget {
-  const _EarnBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 19,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: const Color(0xFFFF6B00),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const _AppText('赚钱', size: 10, weight: FontWeight.w800),
     );
   }
 }

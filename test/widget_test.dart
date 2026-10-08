@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hg_app/core/app/hg_app.dart';
+import 'package:hg_app/core/navigation/main_bottom_nav.dart';
+import 'package:hg_app/core/navigation/main_tab.dart';
+import 'package:hg_app/core/navigation/main_tab_index_provider.dart';
 import 'package:hg_app/features/player/application/player_controller.dart';
 
 void main() {
@@ -51,6 +54,10 @@ void main() {
     expect(find.text('系统'), findsOneWidget);
     expect(find.text('观看完整漫剧 · 全316集'), findsOneWidget);
     expect(find.byKey(const Key('fullscreen-episode-001')), findsOneWidget);
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).bottomNavigationBar,
+      isA<MainBottomNav>(),
+    );
     expect(
       tester
           .widget<SvgPicture>(
@@ -264,9 +271,10 @@ void main() {
       final completeSurface = tester.widget<Container>(
         find.byKey(const Key('complete-entry-surface-episode-001')),
       );
+      final bottomNavRect = tester.getRect(find.byType(MainBottomNav));
       final recommendedPosition = tester.getTopLeft(find.text('推荐'));
       final homePosition = tester.getTopLeft(find.text('首页'));
-      final landscapeCenterY = (size.height - 68) / 2;
+      final landscapeCenterY = bottomNavRect.top / 2;
       final bottomContentGap = size.height < 720 ? 8.0 : 14.0;
       final barrageInfoGap = size.height < 720 ? 8.0 : 12.0;
 
@@ -275,6 +283,8 @@ void main() {
       expect(mediaRect.left, closeTo(0, 1));
       expect(mediaRect.width, closeTo(size.width, 1));
       expect(mediaRect.width / mediaRect.height, closeTo(16 / 9, 0.01));
+      expect(bottomNavRect.top, closeTo(size.height - 68, 1));
+      expect(bottomNavRect.bottom, closeTo(size.height, 1));
       expect(mediaRect.center.dy, closeTo(landscapeCenterY, 1));
       expect(
         fullscreenRect.top - mediaRect.bottom,
@@ -286,6 +296,7 @@ void main() {
       expect(leftStackRect.bottom, closeTo(infoRect.bottom, 1));
       expect(infoRect.bottom, closeTo(completeRect.top - bottomContentGap, 1));
       expect(railRect.bottom, closeTo(leftStackRect.bottom, 1));
+      expect(completeRect.bottom, lessThanOrEqualTo(bottomNavRect.top));
       expect(completeRect.bottom, lessThan(homePosition.dy));
       if (size.height < 670) {
         expect(find.text('作者声明： 内容由AI生成'), findsNothing);
@@ -413,5 +424,83 @@ void main() {
     );
     expect(tester.getTopLeft(find.text('推荐')), recommendedPosition);
     expect(tester.getTopLeft(find.text('首页')), homePosition);
+  });
+
+  testWidgets('switches tab pages from the shared bottom nav', (tester) async {
+    await pumpHgApp(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HgApp)),
+      listen: false,
+    );
+
+    expect(container.read(mainTabIndexProvider), MainTab.home.index);
+    expect(find.byKey(const Key('player-feed-page-view')), findsOneWidget);
+    expect(find.byType(MainBottomNav), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('bottom-nav-theater')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(mainTabIndexProvider), MainTab.theater.index);
+    expect(
+      tester.widget<IndexedStack>(find.byType(IndexedStack)).index,
+      MainTab.theater.index,
+    );
+    expect(find.byKey(const Key('theater-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('bottom-nav-profile')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(mainTabIndexProvider), MainTab.profile.index);
+    expect(find.byKey(const Key('profile-page')), findsOneWidget);
+    expect(find.byType(MainBottomNav), findsOneWidget);
+  });
+
+  testWidgets('suspends playback when leaving home tab', (tester) async {
+    await pumpHgApp(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HgApp)),
+      listen: false,
+    );
+
+    expect(container.read(playerControllerProvider).playbackSuspended, false);
+
+    await tester.tap(find.byKey(const Key('bottom-nav-mall')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(playerControllerProvider).playbackSuspended, true);
+    expect(
+      tester.widget<IndexedStack>(find.byType(IndexedStack)).index,
+      MainTab.mall.index,
+    );
+
+    await tester.tap(find.byKey(const Key('bottom-nav-home')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(playerControllerProvider).playbackSuspended, false);
+    expect(container.read(playerControllerProvider).isPlaying, true);
+  });
+
+  testWidgets('keeps manual pause after returning to home tab', (tester) async {
+    await pumpHgApp(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HgApp)),
+      listen: false,
+    );
+
+    await tester.tap(find.byKey(const Key('video-tap-layer-episode-001')));
+    await tester.pump();
+
+    expect(container.read(playerControllerProvider).isPlaying, false);
+
+    await tester.tap(find.byKey(const Key('bottom-nav-earn')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bottom-nav-home')));
+    await tester.pumpAndSettle();
+
+    expect(container.read(playerControllerProvider).playbackSuspended, false);
+    expect(container.read(playerControllerProvider).isPlaying, false);
   });
 }
