@@ -221,6 +221,21 @@ void main() {
     expect(tester.getTopLeft(find.text('首页')), homePosition);
   });
 
+  testWidgets('keeps channel bar tabs readable with text shadows', (
+    tester,
+  ) async {
+    await pumpHgApp(tester);
+
+    for (final label in ['关注', '漫剧', '真人剧', '推荐']) {
+      final shadows = tester.widget<Text>(find.text(label)).style?.shadows;
+      expect(shadows, isNotNull, reason: '$label 缺少文字阴影');
+      expect(shadows, isNotEmpty);
+      expect(shadows!.first.color, const Color(0x99000000));
+      expect(shadows.first.offset, const Offset(0, 1));
+      expect(shadows.first.blurRadius, 4);
+    }
+  });
+
   testWidgets('keeps product chrome visible on common phone sizes', (
     tester,
   ) async {
@@ -480,6 +495,45 @@ void main() {
 
     expect(container.read(playerControllerProvider).playbackSuspended, false);
     expect(container.read(playerControllerProvider).isPlaying, true);
+  });
+
+  testWidgets('shows empty playback progress when video is disabled', (
+    tester,
+  ) async {
+    await pumpHgApp(tester);
+
+    final bar = find.byKey(const Key('playback-progress-bar-episode-001'));
+    expect(bar, findsOneWidget);
+
+    final fill = find.descendant(
+      of: bar,
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Container &&
+            widget.decoration is BoxDecoration &&
+            (widget.decoration as BoxDecoration).color ==
+                const Color(0xFFFF7A00),
+      ),
+    );
+
+    expect(fill, findsOneWidget);
+    expect(tester.getSize(fill).width, 0);
+  });
+
+  testWidgets('progress bar survives tap and drag without a live player', (
+    tester,
+  ) async {
+    await pumpHgApp(tester);
+
+    final bar = find.byKey(const Key('playback-progress-bar-episode-001'));
+
+    await tester.tap(bar);
+    await tester.pump();
+    await tester.drag(bar, const Offset(80, 0));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('标签造神第一季海大篇 ›'), findsOneWidget);
   });
 
   testWidgets('keeps manual pause after returning to home tab', (tester) async {

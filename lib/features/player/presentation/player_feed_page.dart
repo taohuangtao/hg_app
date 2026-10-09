@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
@@ -8,6 +9,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../core/navigation/main_bottom_nav.dart';
 import '../../../core/navigation/main_tab.dart';
 import '../../../core/navigation/main_tab_index_provider.dart';
+import '../application/episode_playback_handle.dart';
 import '../application/player_controller.dart';
 import '../data/player_feed_repository.dart';
 import '../domain/drama_episode.dart';
@@ -135,7 +137,7 @@ class PlayerLayoutMetrics {
   bool get isVeryCompactHeight => size.height < 670 || contentHeight < 510;
 }
 
-class EpisodePage extends ConsumerWidget {
+class EpisodePage extends ConsumerStatefulWidget {
   const EpisodePage({
     super.key,
     required this.episode,
@@ -150,14 +152,42 @@ class EpisodePage extends ConsumerWidget {
   final bool shouldPrepareVideo;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EpisodePage> createState() => _EpisodePageState();
+}
+
+class _EpisodePageState extends ConsumerState<EpisodePage> {
+  /// 播放器与底部进度条共享的播放进度句柄。
+  final EpisodePlaybackHandle _playback = EpisodePlaybackHandle();
+
+  @override
+  void didUpdateWidget(covariant EpisodePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.episode.id != widget.episode.id) {
+      _playback.detach();
+    }
+  }
+
+  @override
+  void dispose() {
+    _playback.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final episode = widget.episode;
+    final metrics = widget.metrics;
+    final isActive = widget.isActive;
+    final shouldPrepareVideo = widget.shouldPrepareVideo;
     final controllerState = ref.watch(playerControllerProvider);
     final notifier = ref.read(playerControllerProvider.notifier);
     final videoEnabled = ref.watch(videoPlaybackEnabledProvider);
     final isLiked = controllerState.isLiked(episode.id);
     final isFavorited = controllerState.isFavorited(episode.id);
     final shouldPlay =
-        isActive && controllerState.isPlaying && !controllerState.playbackSuspended;
+        isActive &&
+        controllerState.isPlaying &&
+        !controllerState.playbackSuspended;
     final layout = _EpisodeLayout(metrics, episode.videoResolution);
 
     return MediaQuery.withNoTextScaling(
@@ -177,6 +207,7 @@ class EpisodePage extends ConsumerWidget {
                 isPlaying: shouldPlay,
                 enableController: videoEnabled && shouldPrepareVideo,
                 onTogglePlay: notifier.togglePlayPause,
+                playback: _playback,
                 tapLayerKey: Key('video-tap-layer-${episode.id}'),
               ),
             ),
@@ -231,6 +262,7 @@ class EpisodePage extends ConsumerWidget {
               child: CompleteDramaEntry(
                 key: Key('complete-entry-${episode.id}'),
                 episode: episode,
+                playback: _playback,
               ),
             ),
           ],
@@ -368,6 +400,10 @@ class _ChannelTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const textShadows = [
+      Shadow(color: Color(0x99000000), offset: Offset(0, 1), blurRadius: 4),
+    ];
+
     return SizedBox(
       height: 44,
       child: Column(
@@ -377,7 +413,8 @@ class _ChannelTab extends StatelessWidget {
             label,
             size: 20,
             weight: selected ? FontWeight.w800 : FontWeight.w600,
-            color: selected ? Colors.white : const Color(0xFFA8A8A8),
+            color: selected ? Colors.white : const Color(0xFFD1D1D1),
+            shadows: textShadows,
           ),
           const SizedBox(height: 5),
           AnimatedContainer(
@@ -402,6 +439,7 @@ class EpisodeMediaPanel extends StatelessWidget {
     required this.isPlaying,
     required this.enableController,
     required this.onTogglePlay,
+    required this.playback,
     this.tapLayerKey,
   });
 
@@ -409,6 +447,7 @@ class EpisodeMediaPanel extends StatelessWidget {
   final bool isPlaying;
   final bool enableController;
   final VoidCallback onTogglePlay;
+  final EpisodePlaybackHandle playback;
   final Key? tapLayerKey;
 
   @override
@@ -420,6 +459,7 @@ class EpisodeMediaPanel extends StatelessWidget {
         isPlaying: isPlaying,
         enableController: enableController,
         onTogglePlay: onTogglePlay,
+        playback: playback,
         tapLayerKey: tapLayerKey,
       ),
     );
@@ -946,9 +986,16 @@ class _AuthorDisclosure extends StatelessWidget {
 }
 
 class CompleteDramaEntry extends StatelessWidget {
-  const CompleteDramaEntry({super.key, required this.episode});
+  const CompleteDramaEntry({
+    super.key,
+    required this.episode,
+    required this.playback,
+  });
 
   final DramaEpisode episode;
+
+  /// 当前视频的真实播放进度，来自播放器上报。
+  final EpisodePlaybackHandle playback;
 
   @override
   Widget build(BuildContext context) {
@@ -987,47 +1034,151 @@ class CompleteDramaEntry extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(
-            height: 10,
-            child: Stack(
-              alignment: Alignment.centerLeft,
-              children: [
-                Container(
-                  height: 3,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF3C3C3C),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                FractionallySizedBox(
-                  widthFactor: episode.progress.clamp(0, 1),
-                  child: Container(
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFF7A00),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment(
-                    -1 + 2 * episode.progress.clamp(0, 1),
-                    0,
-                  ),
-                  child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          _PlaybackProgressBar(
+            key: Key('playback-progress-bar-${episode.id}'),
+            playback: playback,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 跟随真实播放进度的进度条，支持拖动与点击跳播。
+class _PlaybackProgressBar extends StatefulWidget {
+  const _PlaybackProgressBar({super.key, required this.playback});
+
+  static const double touchHeight = 20;
+  static const double trackHeight = 3;
+  static const double dotSize = 8;
+  static const double draggingDotSize = 11;
+
+  final EpisodePlaybackHandle playback;
+
+  @override
+  State<_PlaybackProgressBar> createState() => _PlaybackProgressBarState();
+}
+
+class _PlaybackProgressBarState extends State<_PlaybackProgressBar> {
+  /// 拖动过程中的预览进度，松手后清空。
+  double? _dragRatio;
+
+  double _ratioFrom(Offset localPosition) {
+    final renderBox = context.findRenderObject();
+    if (renderBox is! RenderBox) {
+      return 0;
+    }
+    final width = renderBox.size.width;
+    if (width <= 0) {
+      return 0;
+    }
+    return (localPosition.dx / width).clamp(0.0, 1.0);
+  }
+
+  void _updatePreview(Offset localPosition) {
+    final ratio = _ratioFrom(localPosition);
+    if (_dragRatio == ratio) {
+      return;
+    }
+    setState(() => _dragRatio = ratio);
+  }
+
+  void _commitSeek() {
+    final target = _dragRatio;
+    if (target == null) {
+      return;
+    }
+    setState(() => _dragRatio = null);
+    unawaited(widget.playback.seekToRatio(target));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: widget.playback,
+      builder: (context, _) {
+        final dragging = _dragRatio != null;
+        final ratio = _dragRatio ?? widget.playback.ratio;
+        final dot = dragging
+            ? _PlaybackProgressBar.draggingDotSize
+            : _PlaybackProgressBar.dotSize;
+
+        return SizedBox(
+          height: _PlaybackProgressBar.touchHeight,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragStart: (details) =>
+                _updatePreview(details.localPosition),
+            onHorizontalDragUpdate: (details) =>
+                _updatePreview(details.localPosition),
+            onHorizontalDragEnd: (_) => _commitSeek(),
+            onHorizontalDragCancel: () => setState(() => _dragRatio = null),
+            onTapUp: (details) => unawaited(
+              widget.playback.seekToRatio(_ratioFrom(details.localPosition)),
+            ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final width = constraints.maxWidth;
+                final progressWidth = math.min(
+                  math.max(0.0, width * ratio),
+                  width,
+                );
+                final trackTop =
+                    (_PlaybackProgressBar.touchHeight -
+                        _PlaybackProgressBar.trackHeight) /
+                    2;
+                final dotLeft = math.min(
+                  math.max(0.0, progressWidth - dot / 2),
+                  math.max(0.0, width - dot),
+                );
+
+                return SizedBox.expand(
+                  child: Stack(
+                    children: [
+                      Positioned(
+                        left: 0,
+                        width: width,
+                        top: trackTop,
+                        height: _PlaybackProgressBar.trackHeight,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF3C3C3C),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 0,
+                        width: progressWidth,
+                        top: trackTop,
+                        height: _PlaybackProgressBar.trackHeight,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFF7A00),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: dotLeft,
+                        width: dot,
+                        top: (_PlaybackProgressBar.touchHeight - dot) / 2,
+                        height: dot,
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      },
     );
   }
 }

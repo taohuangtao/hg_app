@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../application/episode_playback_handle.dart';
 import '../../domain/drama_episode.dart';
 
 class DramaVideoPlayer extends StatefulWidget {
@@ -15,6 +16,7 @@ class DramaVideoPlayer extends StatefulWidget {
     required this.isPlaying,
     required this.enableController,
     required this.onTogglePlay,
+    required this.playback,
     this.tapLayerKey,
   });
 
@@ -23,6 +25,9 @@ class DramaVideoPlayer extends StatefulWidget {
   final bool isPlaying;
   final bool enableController;
   final VoidCallback onTogglePlay;
+
+  /// 用于上报真实播放进度、并对外提供 seek 能力的共享句柄。
+  final EpisodePlaybackHandle playback;
   final Key? tapLayerKey;
 
   @override
@@ -44,6 +49,11 @@ class _DramaVideoPlayerState extends State<DramaVideoPlayer> {
   @override
   void didUpdateWidget(covariant DramaVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.playback != widget.playback) {
+      oldWidget.playback.detach();
+      _rebindPlayback();
+    }
+
     if (oldWidget.assetPath != widget.assetPath ||
         oldWidget.enableController != widget.enableController) {
       _disposeController();
@@ -70,12 +80,18 @@ class _DramaVideoPlayerState extends State<DramaVideoPlayer> {
         .initialize()
         .then((_) async {
           await controller.setLooping(true);
+          if (!mounted || _controller != controller) {
+            return;
+          }
+          controller.addListener(_handleControllerUpdate);
+          widget.playback.attach(controller.seekTo);
           if (widget.isPlaying) {
             await controller.play();
           }
           if (mounted) {
             setState(() {});
           }
+          _handleControllerUpdate();
         })
         .catchError((Object error) {
           if (mounted) {
@@ -89,9 +105,36 @@ class _DramaVideoPlayerState extends State<DramaVideoPlayer> {
   void _disposeController() {
     final controller = _controller;
     _controller = null;
+    widget.playback.detach();
     if (controller != null) {
+      controller.removeListener(_handleControllerUpdate);
       unawaited(controller.dispose());
     }
+  }
+
+  /// 把当前 controller 的播放位置同步给共享句柄。
+  void _handleControllerUpdate() {
+    final controller = _controller;
+    if (controller == null || _error != null) {
+      return;
+    }
+
+    final value = controller.value;
+    if (!value.isInitialized || value.duration <= Duration.zero) {
+      return;
+    }
+
+    widget.playback.report(position: value.position, duration: value.duration);
+  }
+
+  /// 句柄被替换时，重新绑定已就绪的 controller。
+  void _rebindPlayback() {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+    widget.playback.attach(controller.seekTo);
+    _handleControllerUpdate();
   }
 
   void _syncPlayback() {
