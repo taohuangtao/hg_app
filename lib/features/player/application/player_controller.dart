@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/drama_episode.dart';
+import '../domain/player_channel.dart';
 
 final videoPlaybackEnabledProvider = Provider<bool>((ref) => true);
 
@@ -13,6 +14,7 @@ final playerControllerProvider =
 @immutable
 class PlayerControllerState {
   const PlayerControllerState({
+    this.channelIndex = PlayerChannel.defaultChannelIndex,
     this.currentIndex = 0,
     this.isPlaying = true,
     this.preloadedIndex = 1,
@@ -21,6 +23,9 @@ class PlayerControllerState {
     this.trackedDramaIds = const {},
     this.playbackSuspended = false,
   });
+
+  /// 当前频道在 [PlayerChannel] 枚举中的下标。
+  final int channelIndex;
 
   final int currentIndex;
   final bool isPlaying;
@@ -48,6 +53,7 @@ class PlayerControllerState {
   }
 
   PlayerControllerState copyWith({
+    int? channelIndex,
     int? currentIndex,
     bool? isPlaying,
     int? preloadedIndex,
@@ -57,6 +63,7 @@ class PlayerControllerState {
     bool? playbackSuspended,
   }) {
     return PlayerControllerState(
+      channelIndex: channelIndex ?? this.channelIndex,
       currentIndex: currentIndex ?? this.currentIndex,
       isPlaying: isPlaying ?? this.isPlaying,
       preloadedIndex: preloadedIndex ?? this.preloadedIndex,
@@ -72,6 +79,19 @@ class PlayerController extends Notifier<PlayerControllerState> {
   @override
   PlayerControllerState build() {
     return const PlayerControllerState();
+  }
+
+  /// 切换顶部频道，新频道从第一条剧集开始。
+  ///
+  /// 不改动 [PlayerControllerState.isPlaying] 与
+  /// [PlayerControllerState.playbackSuspended]，保留用户的暂停状态。
+  void selectChannel(int index) {
+    if (index == state.channelIndex) return;
+    state = state.copyWith(
+      channelIndex: index,
+      currentIndex: 0,
+      preloadedIndex: 1,
+    );
   }
 
   void setCurrentIndex(int index) {

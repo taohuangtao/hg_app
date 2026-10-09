@@ -13,6 +13,7 @@ import '../application/episode_playback_handle.dart';
 import '../application/player_controller.dart';
 import '../data/player_feed_repository.dart';
 import '../domain/drama_episode.dart';
+import '../domain/player_channel.dart';
 import 'widgets/drama_video_player.dart';
 
 class PlayerFeedPage extends ConsumerStatefulWidget {
@@ -23,23 +24,14 @@ class PlayerFeedPage extends ConsumerStatefulWidget {
 }
 
 class _PlayerFeedPageState extends ConsumerState<PlayerFeedPage> {
-  late final PageController _pageController;
+  /// 频道切换动画的方向：1 表示新频道从右侧滑入，-1 表示从左侧滑入。
+  int _slideDirection = 1;
 
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+  /// 单次横向拖拽累计的位移，用于速度过小时的兜底判定。
+  double _dragDistance = 0;
 
   @override
   Widget build(BuildContext context) {
-    final episodes = ref.watch(playerFeedProvider);
     final state = ref.watch(playerControllerProvider);
     final mediaQuery = MediaQuery.of(context);
 
@@ -63,40 +55,142 @@ class _PlayerFeedPageState extends ConsumerState<PlayerFeedPage> {
 
           return Stack(
             children: [
-              PageView.builder(
-                key: const Key('player-feed-page-view'),
-                controller: _pageController,
-                scrollDirection: Axis.vertical,
-                itemCount: episodes.length,
-                onPageChanged: (index) {
-                  ref
-                      .read(playerControllerProvider.notifier)
-                      .setCurrentIndex(index);
-                },
-                itemBuilder: (context, index) {
-                  final episode = episodes[index];
-                  final distance = (index - state.currentIndex).abs();
-
-                  return EpisodePage(
-                    key: ValueKey(episode.id),
-                    episode: episode,
-                    metrics: metrics,
-                    isActive: index == state.currentIndex,
-                    shouldPrepareVideo: distance <= 1,
-                  );
-                },
+              Positioned.fill(
+                child: GestureDetector(
+                  onHorizontalDragStart: (_) => _dragDistance = 0,
+                  onHorizontalDragUpdate: (details) {
+                    _dragDistance += details.delta.dx;
+                  },
+                  onHorizontalDragEnd: _handleHorizontalDragEnd,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeOutCubic,
+                    transitionBuilder: _buildChannelTransition,
+                    child: PlayerFeedView(
+                      key: ValueKey<int>(state.channelIndex),
+                      metrics: metrics,
+                    ),
+                  ),
+                ),
               ),
               Positioned(
                 left: 0,
                 right: 0,
                 top: 0,
                 height: metrics.topChromeHeight,
-                child: PlayerChannelBar(metrics: metrics),
+                child: PlayerChannelBar(
+                  metrics: metrics,
+                  channelIndex: state.channelIndex,
+                  onChannelSelected: selectChannel,
+                ),
               ),
             ],
           );
         },
       ),
+    );
+  }
+
+  /// 横向滑动结束时按“速度优先、位移兜底”决定是否切换频道。
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    final velocity = details.primaryVelocity ?? 0;
+    final distance = _dragDistance;
+    _dragDistance = 0;
+
+    final double movement;
+    if (velocity.abs() >= 250) {
+      movement = velocity;
+    } else if (distance.abs() >= 60) {
+      movement = distance;
+    } else {
+      return;
+    }
+
+    // 向左滑（位移为负）切到右边的频道，向右滑切到左边的频道。
+    final step = movement < 0 ? 1 : -1;
+    final current = ref.read(playerControllerProvider).channelIndex;
+    selectChannel(current + step);
+  }
+
+  void selectChannel(int index) {
+    final current = ref.read(playerControllerProvider).channelIndex;
+    if (index == current || index < 0 || index >= PlayerChannel.values.length) {
+      return;
+    }
+
+    _slideDirection = index > current ? 1 : -1;
+    ref.read(playerControllerProvider.notifier).selectChannel(index);
+  }
+
+  Widget _buildChannelTransition(Widget child, Animation<double> animation) {
+    final current = ref.read(playerControllerProvider).channelIndex;
+    final isIncoming = child.key == ValueKey<int>(current);
+    final direction = isIncoming ? _slideDirection : -_slideDirection;
+
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: Offset(direction.toDouble(), 0),
+        end: Offset.zero,
+      ).animate(animation),
+      child: FadeTransition(opacity: animation, child: child),
+    );
+  }
+}
+
+/// 单个频道的剧集流。
+///
+/// 频道切换时新旧两份会短暂共存，因此每个实例自己持有 [PageController]。
+class PlayerFeedView extends ConsumerStatefulWidget {
+  const PlayerFeedView({super.key, required this.metrics});
+
+  final PlayerLayoutMetrics metrics;
+
+  @override
+  ConsumerState<PlayerFeedView> createState() => _PlayerFeedViewState();
+}
+
+class _PlayerFeedViewState extends ConsumerState<PlayerFeedView> {
+  late final PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // 现阶段各频道共用同一份模拟数据，后续接入真实数据时再按频道区分。
+    final episodes = ref.watch(playerFeedProvider);
+    final state = ref.watch(playerControllerProvider);
+
+    return PageView.builder(
+      key: const Key('player-feed-page-view'),
+      controller: _pageController,
+      scrollDirection: Axis.vertical,
+      itemCount: episodes.length,
+      onPageChanged: (index) {
+        ref.read(playerControllerProvider.notifier).setCurrentIndex(index);
+      },
+      itemBuilder: (context, index) {
+        final episode = episodes[index];
+        final distance = (index - state.currentIndex).abs();
+
+        return EpisodePage(
+          key: ValueKey(episode.id),
+          episode: episode,
+          metrics: widget.metrics,
+          isActive: index == state.currentIndex,
+          shouldPrepareVideo: distance <= 1,
+        );
+      },
     );
   }
 }
@@ -349,9 +443,16 @@ class _EpisodeLayout {
 }
 
 class PlayerChannelBar extends StatelessWidget {
-  const PlayerChannelBar({super.key, required this.metrics});
+  const PlayerChannelBar({
+    super.key,
+    required this.metrics,
+    required this.channelIndex,
+    required this.onChannelSelected,
+  });
 
   final PlayerLayoutMetrics metrics;
+  final int channelIndex;
+  final ValueChanged<int> onChannelSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -365,17 +466,25 @@ class PlayerChannelBar extends StatelessWidget {
           child: Row(
             children: [
               const SizedBox(width: 20),
-              const Expanded(
+              Expanded(
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _ChannelTab('关注'),
-                    SizedBox(width: 22),
-                    _ChannelTab('漫剧'),
-                    SizedBox(width: 22),
-                    _ChannelTab('真人剧'),
-                    SizedBox(width: 22),
-                    _ChannelTab('推荐', selected: true),
+                    for (
+                      var index = 0;
+                      index < PlayerChannel.values.length;
+                      index++
+                    ) ...[
+                      if (index > 0) const SizedBox(width: 22),
+                      _ChannelTab(
+                        PlayerChannel.values[index].label,
+                        key: Key(
+                          'channel-tab-${PlayerChannel.values[index].keyName}',
+                        ),
+                        selected: index == channelIndex,
+                        onTap: () => onChannelSelected(index),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -393,10 +502,11 @@ class PlayerChannelBar extends StatelessWidget {
 }
 
 class _ChannelTab extends StatelessWidget {
-  const _ChannelTab(this.label, {this.selected = false});
+  const _ChannelTab(this.label, {super.key, this.selected = false, this.onTap});
 
   final String label;
   final bool selected;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -404,29 +514,33 @@ class _ChannelTab extends StatelessWidget {
       Shadow(color: Color(0x99000000), offset: Offset(0, 1), blurRadius: 4),
     ];
 
-    return SizedBox(
-      height: 44,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          _AppText(
-            label,
-            size: 20,
-            weight: selected ? FontWeight.w800 : FontWeight.w600,
-            color: selected ? Colors.white : const Color(0xFFD1D1D1),
-            shadows: textShadows,
-          ),
-          const SizedBox(height: 5),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: selected ? 29 : 0,
-            height: 2,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(1),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        height: 44,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _AppText(
+              label,
+              size: 20,
+              weight: selected ? FontWeight.w800 : FontWeight.w600,
+              color: selected ? Colors.white : const Color(0xFFD1D1D1),
+              shadows: textShadows,
             ),
-          ),
-        ],
+            const SizedBox(height: 5),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: selected ? 29 : 0,
+              height: 2,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(1),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

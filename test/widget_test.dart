@@ -7,6 +7,7 @@ import 'package:hg_app/core/navigation/main_bottom_nav.dart';
 import 'package:hg_app/core/navigation/main_tab.dart';
 import 'package:hg_app/core/navigation/main_tab_index_provider.dart';
 import 'package:hg_app/features/player/application/player_controller.dart';
+import 'package:hg_app/features/player/domain/player_channel.dart';
 
 void main() {
   Future<void> pumpHgApp(
@@ -556,5 +557,108 @@ void main() {
 
     expect(container.read(playerControllerProvider).playbackSuspended, false);
     expect(container.read(playerControllerProvider).isPlaying, false);
+  });
+
+  test('keeps channel order aligned with the default channel index', () {
+    expect(PlayerChannel.values.map((channel) => channel.label), [
+      '关注',
+      '漫剧',
+      '真人剧',
+      '推荐',
+    ]);
+    expect(PlayerChannel.defaultChannelIndex, PlayerChannel.recommended.index);
+  });
+
+  testWidgets('switches channel when tapping channel bar text', (tester) async {
+    await pumpHgApp(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HgApp)),
+      listen: false,
+    );
+
+    expect(
+      container.read(playerControllerProvider).channelIndex,
+      PlayerChannel.recommended.index,
+    );
+    expect(
+      tester.widget<Text>(find.text('推荐')).style?.fontWeight,
+      FontWeight.w800,
+    );
+    expect(
+      tester.widget<Text>(find.text('漫剧')).style?.color,
+      const Color(0xFFD1D1D1),
+    );
+
+    await tester.tap(find.text('漫剧'));
+    await tester.pump();
+
+    // 切换过程中新旧两份剧集流短暂共存，形成左右滑动的过渡。
+    expect(find.byKey(const Key('player-feed-page-view')), findsNWidgets(2));
+
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(playerControllerProvider).channelIndex,
+      PlayerChannel.comic.index,
+    );
+    expect(container.read(playerControllerProvider).currentIndex, 0);
+    expect(find.byKey(const Key('player-feed-page-view')), findsOneWidget);
+    expect(tester.widget<Text>(find.text('漫剧')).style?.color, Colors.white);
+    expect(
+      tester.widget<Text>(find.text('漫剧')).style?.fontWeight,
+      FontWeight.w800,
+    );
+    expect(
+      tester.widget<Text>(find.text('推荐')).style?.color,
+      const Color(0xFFD1D1D1),
+    );
+  });
+
+  testWidgets('switches channel with horizontal swipe and respects bounds', (
+    tester,
+  ) async {
+    await pumpHgApp(tester);
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(HgApp)),
+      listen: false,
+    );
+    final feed = find.byKey(const Key('player-feed-page-view'));
+
+    expect(
+      container.read(playerControllerProvider).channelIndex,
+      PlayerChannel.recommended.index,
+    );
+
+    // 推荐是最后一个频道，继续向左滑不会越界。
+    await tester.drag(feed, const Offset(-220, 0));
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(playerControllerProvider).channelIndex,
+      PlayerChannel.recommended.index,
+    );
+
+    // 向右滑回到左侧的频道。
+    await tester.drag(feed, const Offset(220, 0));
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(playerControllerProvider).channelIndex,
+      PlayerChannel.liveAction.index,
+    );
+    expect(find.byKey(const Key('player-feed-page-view')), findsOneWidget);
+
+    // 滑到第一个频道后再向右滑同样不越界。
+    await tester.tap(find.byKey(const Key('channel-tab-follow')));
+    await tester.pumpAndSettle();
+    await tester.drag(feed, const Offset(220, 0));
+    await tester.pumpAndSettle();
+
+    expect(
+      container.read(playerControllerProvider).channelIndex,
+      PlayerChannel.follow.index,
+    );
   });
 }
